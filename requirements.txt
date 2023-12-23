@@ -3,7 +3,6 @@ anyio==3.7.1
 asgiref==3.7.2
 astroid==2.15.5
 attrs==20.3.0
-aws-cfn-bootstrap==2.0
 awscli==2.14.5
 awscrt==0.19.19
 Babel==2.9.1
