@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
 from openai import OpenAI, OpenAIError
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 # APIクライアントの設定
 client = OpenAI(api_key = os.environ.get("OPENAI_API_KEY"))
