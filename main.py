@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File as FastAPIFile, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, LargeBinary
@@ -10,20 +10,27 @@ from passlib.context import CryptContext
 from openai import OpenAI, OpenAIError
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt
+from sqlalchemy.orm import Session
 
-# JWTシークレットキーとアルゴリズム
-SECRET_KEY = "your_secret_key"
+# 環境変数からシークレットキーと有効期限を取得
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default_secret_key")  # デフォルト値を提供する
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))  # 環境変数が設定されていない場合のデフォルト値
+
 
 # データベース接続とモデル定義
 DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL.startswith("postgres://"):
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 Base = declarative_base()
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # データベースモデル
 class User(Base):
@@ -53,7 +60,7 @@ class Message(Base):
     content = Column(String)
     role = Column(String)
 
-class File(Base):
+class FileModel(Base):
     __tablename__ = "files"
     id = Column(Integer, primary_key=True, index=True)
     file_content = Column(LargeBinary)
@@ -81,6 +88,30 @@ def get_db():
         yield db
     finally:
         db.close()
+        
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+async def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+# パスワードハッシュ化の設定
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # パスワードをハッシュ化する関数
 def hash_password(password: str):
@@ -90,7 +121,7 @@ def hash_password(password: str):
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-# トークンの生成
+# JWTトークン生成用の関数
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     if expires_delta:
@@ -201,9 +232,9 @@ def get_responses(thread_id: str = Query(...), db: Session = Depends(get_db)):
     return {"responses": [response.content for response in responses]}
 
 @app.post("/upload_file")
-async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_file(file: UploadFile = FileModel(...), db: Session = Depends(get_db)):
     file_content = await file.read()
-    db_file = File(file_content=file_content, purpose='assistants')
+    db_file = FileModel(file_content=file_content, purpose='assistants')
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
