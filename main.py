@@ -4,7 +4,7 @@ from openai import OpenAI, OpenAIError
 from fastapi.middleware.cors import CORSMiddleware
 
 # APIクライアントの設定
-client = OpenAI(api_key="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")
+client = OpenAI(api_key = os.environ.get("OPENAI_API_KEY"))
 
 app = FastAPI()
 
