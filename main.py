@@ -22,7 +22,7 @@ app.add_middleware(
 class CreateAssistantRequest(BaseModel):
     name: str
     instructions: str
-    model: str = "gpt-4-1106-preview"
+    model: str = "gpt-3.5-turbo-1106"
     tools: list = [{"type": "code_interpreter"}]
 
 class CreateThreadRequest(BaseModel):
