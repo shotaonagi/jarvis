@@ -3,3 +3,7 @@ uvicorn[standard]
 pydantic
 openai
 python-multipart
+sqlalchemy
+alembic
+passlib[bcrypt]
+python-jose[cryptography]
