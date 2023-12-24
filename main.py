@@ -232,8 +232,8 @@ def get_responses(thread_id: str = Query(...), db: Session = Depends(get_db)):
     return {"responses": [response.content for response in responses]}
 
 @app.post("/upload_file")
-async def upload_file(FileModel: UploadFile = FileModel(...), db: Session = Depends(get_db)):
-    file_content = await FileModel.read()
+async def upload_file(file: UploadFile = FastAPIFile(...), db: Session = Depends(get_db)):
+    file_content = await file.read()
     db_file = FileModel(file_content=file_content, purpose='assistants')
     db.add(db_file)
     db.commit()
