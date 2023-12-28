@@ -181,24 +181,24 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 @app.post("/create_assistant")
-def create_assistant(request: CreateAssistantRequest, db: Session = Depends(get_db)):
-    assistant = Assistant(name=request.name, model=request.model)
+def create_assistant(request: CreateAssistantRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    assistant = Assistant(name=request.name, model=request.model, user_id=current_user.id)
     db.add(assistant)
     db.commit()
     db.refresh(assistant)
     return {"assistant_id": assistant.id}
 
 @app.post("/create_thread")
-def create_thread(db: Session = Depends(get_db)):
-    thread = Thread()
+def create_thread(request: CreateThreadRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    thread = Thread(user_id=current_user.id)
     db.add(thread)
     db.commit()
     db.refresh(thread)
     return {"thread_id": thread.id}
 
 @app.post("/add_message")
-def add_message(request: AddMessageRequest, db: Session = Depends(get_db)):
-    message = Message(thread_id=request.thread_id, content=request.content, role=request.role)
+def add_message(request: AddMessageRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    message = Message(thread_id=request.thread_id, content=request.content, role=request.role, user_id=current_user.id)
     db.add(message)
     db.commit()
     db.refresh(message)
@@ -227,8 +227,8 @@ def check_run_status(thread_id: str = Query(...), run_id: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
 
 @app.get("/get_responses")
-def get_responses(thread_id: str = Query(...), db: Session = Depends(get_db)):
-    responses = db.query(Message).filter(Message.thread_id == thread_id, Message.role == "assistant").all()
+def get_responses(thread_id: str = Query(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    responses = db.query(Message).filter(Message.thread_id == thread_id, Message.user_id == current_user.id).all()
     return {"responses": [response.content for response in responses]}
 
 @app.post("/upload_file")
