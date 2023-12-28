@@ -3,24 +3,17 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, Session
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
-from openai import OpenAI, OpenAIError
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from jose import jwt
-from sqlalchemy.orm import Session
 
 # 環境変数からシークレットキーと有効期限を取得
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default_secret_key")  # デフォルト値を提供する
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default_secret_key")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))  # 環境変数が設定されていない場合のデフォルト値
-
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
 # データベース接続とモデル定義
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -79,6 +72,7 @@ app.add_middleware(
 )
 
 # APIクライアントの設定
+from openai import OpenAI, OpenAIError
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # 依存関係
@@ -88,7 +82,7 @@ def get_db():
         yield db
     finally:
         db.close()
-        
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 async def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
@@ -133,6 +127,12 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return encoded_jwt
 
 # モデル定義
+
+class CreateUserRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
 class CreateAssistantRequest(BaseModel):
     name: str
     instructions: str
@@ -153,9 +153,15 @@ class RunAssistantRequest(BaseModel):
 
 # ユーザー作成のエンドポイント
 @app.post("/users/")
-def create_user(username: str, email: str, password: str, db: Session = Depends(get_db)):
-    hashed_password = hash_password(password)
-    db_user = User(username=username, email=email, hashed_password=hashed_password)
+def create_user(request: CreateUserRequest, db: Session = Depends(get_db)):
+    # ユーザー名で既存のユーザーをチェック（オプション）
+    db_user = db.query(User).filter(User.username == request.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+
+    # パスワードハッシュ化とユーザー作成
+    hashed_password = hash_password(request.password)
+    db_user = User(username=request.username, email=request.email, hashed_password=hashed_password)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
